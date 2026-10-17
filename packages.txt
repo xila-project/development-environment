@@ -1,0 +1,20 @@
+# Base build tooling
+build-essential
+clang
+libclang-dev
+mold
+pkg-config
+cmake
+ninja-build
+# Native Xila host dependencies (SDL2/OpenGL/Wayland/xkbcommon)
+libwayland-dev
+libxkbcommon-dev
+libsdl2-dev
+libgl-dev
+libssl-dev
+zlib1g-dev
+# Downloads, VCS, certificates
+git
+curl
+ca-certificates
+xz-utils

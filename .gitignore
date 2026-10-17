@@ -1,0 +1,5 @@
+# Local tooling and planning state.
+.superpowers/
+
+# Per-workspace container state created by scripts/xila-dev.
+.dev-environment/
