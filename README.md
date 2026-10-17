@@ -28,14 +28,15 @@ Built from `ubuntu:24.04`, the image ships the pinned toolchain:
 
 `toolchains.env` is the **single source of truth** for tool versions. The
 installer (`install-tools.sh`) and the image read their pins from it; do not
-duplicate versions elsewhere. Downstream project CI reads the same file. To
-upgrade a tool, edit that file and rebuild the image, which invalidates only the
-toolchain layer.
+duplicate versions elsewhere. Downstream project CI will consume the same file in
+a later phase. To upgrade a tool, edit that file and rebuild the image, which
+invalidates only the toolchain layer.
 
 A few values that Docker cannot read from the file at `ENV` time are baked into
 the `Dockerfile`: the default `RUSTUP_TOOLCHAIN` mirrors this manifest, and
 `LIBCLANG_PATH` points at the base image's `clang`. A build-time sanity check
-guards the toolchain and `libclang`.
+guards the toolchains, the pinned `cargo-binstall` version and `libclang`, and
+fails the build when those hardcoded `ENV` values drift from the manifest.
 
 ## Building and pulling
 
@@ -53,6 +54,15 @@ docker pull ghcr.io/xila-project/core-dev:main
 
 GHCR publishing is not part of this phase (see [Scope](#scope)), so today the
 local build above is the intended path.
+
+### Download trust boundary
+
+The build downloads a few things over the network. Node.js is verified: the
+tarball is checked against the official `SHASUMS256.txt` before extraction. The
+`rustup` bootstrap script and the `cargo-binstall` installer are fetched over TLS
+(`curl --proto '=https'`, certificate validation on) and executed without an
+independent checksum or signature check, so their integrity rests on TLS plus
+the pinned GitHub tag/URL they are fetched from.
 
 ## Using `scripts/xila-dev`
 
@@ -81,7 +91,7 @@ Global flags:
 | Flag | Purpose |
 | --- | --- |
 | `--workspace <path>` | Repository to mount at `/workspace` (default: current directory). |
-| `--gui` | Opt-in: forward the Wayland socket and environment for GUI builds. |
+| `--gui` | Opt-in: forward the display for GUI builds — the Wayland socket/env when a Wayland session is available, otherwise X11 as a fallback. |
 | `--device <path>` | Opt-in: pass a host device (MCU/serial); repeatable. |
 | `--engine docker\|podman` | Choose the container engine explicitly. |
 | `--verbose` | Print the resolved command before running it. |
@@ -93,8 +103,8 @@ Examples:
 /path/to/development-environment/scripts/xila-dev build   # build the image
 cd /path/to/Xila/Core
 /path/to/development-environment/scripts/xila-dev shell    # shell in Core
-scripts/xila-dev run -- cargo --version
-scripts/xila-dev check                                     # cargo make check
+/path/to/development-environment/scripts/xila-dev run -- cargo --version
+/path/to/development-environment/scripts/xila-dev check     # cargo make check
 ```
 
 The default image is `ghcr.io/xila-project/core-dev:main`; set
@@ -128,9 +138,10 @@ Deleting the directory resets the environment.
 
 Both of these are off by default and only enabled when requested:
 
-- `--gui` forwards **only** the Wayland socket and its environment variables (for
-  running GUI examples). It never uses `--privileged` and does not mount the
-  whole host.
+- `--gui` forwards **only** the Wayland socket and its environment variables when
+  a Wayland session is available, falling back to the X11 socket
+  (`/tmp/.X11-unix`) and `DISPLAY` otherwise (for running GUI examples). It never
+  uses `--privileged` and does not mount the whole host.
 - `--device <path>` passes a single host device through for microcontroller and
   serial work; repeat the flag for more devices.
 
