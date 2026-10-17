@@ -115,6 +115,15 @@ root, which should be gitignored and is never committed:
 
 Deleting the directory resets the environment.
 
+## Known limitations
+
+- **Git worktrees are not supported as the workspace.** Only the workspace is
+  mounted at `/workspace`, so a linked worktree — where `.git` is a *file*
+  pointing at a path outside the workspace — leaves the container without a
+  usable repository and tasks that shell out to `git` (such as the workspace's
+  font generation via a `github:` npm dependency) fail. Use a normal clone of
+  the project as the workspace.
+
 ## Opt-in host access
 
 Both of these are off by default and only enabled when requested:
