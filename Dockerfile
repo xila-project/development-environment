@@ -21,15 +21,16 @@ RUN apt-get update \
     && grep -v '^#' /tmp/packages.txt | xargs apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. LLVM/Clang. Ubuntu noble ships LLVM 18, but Xila's native and WASM builds
-#    use the LLVM 21.1.8 that Devbox resolved from its nixpkgs pin, so install
-#    that exact line from apt.llvm.org. The version is hardcoded here (Docker
-#    cannot read the manifest at ENV time) and guarded by the sanity check
-#    below; the apt suite is named by the major version (llvm-toolchain-noble-21).
-#    The build relies on bare `clang`/`clang++` (see Core's .cargo/config.toml),
-#    so create those symlinks explicitly instead of leaning on the versioned apt
-#    binaries or noble's own `clang` package.
-ENV LLVM_VERSION=21.1.8
+# 2. LLVM/Clang. Ubuntu noble ships LLVM 18, but Xila is actually built with
+#    the maintainer's system clang 22.1.8 (Debian clang version 22.1.8), not the
+#    21.1.8 Devbox declares nor CI's 18, so install that exact line from
+#    apt.llvm.org. The version is hardcoded here (Docker cannot read the manifest
+#    at ENV time) and guarded by the sanity check below; the apt suite is named
+#    by the major version (llvm-toolchain-noble-22). The build relies on bare
+#    `clang`/`clang++` (see Core's .cargo/config.toml), so create those symlinks
+#    explicitly instead of leaning on the versioned apt binaries or noble's own
+#    `clang` package.
+ENV LLVM_VERSION=22.1.8
 RUN LLVM_MAJOR="${LLVM_VERSION%%.*}" \
     && curl --proto '=https' --tlsv1.2 -fsSL \
          https://apt.llvm.org/llvm-snapshot.gpg.key \
@@ -59,7 +60,7 @@ RUN chmod +x /tmp/install-tools.sh \
 #    smoke tests) can run `rustup +"$XILA_NIGHTLY_TOOLCHAIN" ...`.
 ENV CC=clang \
     CXX=clang++ \
-    LIBCLANG_PATH=/usr/lib/llvm-21/lib \
+    LIBCLANG_PATH=/usr/lib/llvm-22/lib \
     CC_wasm32_unknown_unknown=clang \
     CXX_wasm32_unknown_unknown=clang++ \
     CC_wasm32_wasip1=clang \
