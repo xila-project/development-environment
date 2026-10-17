@@ -9,7 +9,7 @@
 # changing) are installed before the pinned toolchains (`toolchains.env`, bumped
 # whenever a tool version changes).
 
-FROM ubuntu:24.04
+FROM debian:trixie
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -21,21 +21,21 @@ RUN apt-get update \
     && grep -v '^#' /tmp/packages.txt | xargs apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. LLVM/Clang. Ubuntu noble ships LLVM 18, but Xila is actually built with
+# 2. LLVM/Clang. Debian trixie does not ship the required LLVM line, so install
 #    the maintainer's system clang 22.1.8 (Debian clang version 22.1.8), not the
-#    21.1.8 Devbox declares nor CI's 18, so install that exact line from
+#    21.1.8 Devbox declares nor CI's version, so install that exact line from
 #    apt.llvm.org. The version is hardcoded here (Docker cannot read the manifest
 #    at ENV time) and guarded by the sanity check below; the apt suite is named
-#    by the major version (llvm-toolchain-noble-22). The build relies on bare
+#    by the major version (llvm-toolchain-trixie-22). The build relies on bare
 #    `clang`/`clang++` (see Core's .cargo/config.toml), so create those symlinks
-#    explicitly instead of leaning on the versioned apt binaries or noble's own
+#    explicitly instead of leaning on the versioned apt binaries or Debian's own
 #    `clang` package.
 ENV LLVM_VERSION=22.1.8
 RUN LLVM_MAJOR="${LLVM_VERSION%%.*}" \
     && curl --proto '=https' --tlsv1.2 -fsSL \
          https://apt.llvm.org/llvm-snapshot.gpg.key \
          -o /usr/share/keyrings/llvm.asc \
-    && echo "deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/noble/ llvm-toolchain-noble-${LLVM_MAJOR} main" \
+    && echo "deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/trixie/ llvm-toolchain-trixie-${LLVM_MAJOR} main" \
          > /etc/apt/sources.list.d/llvm.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -44,13 +44,39 @@ RUN LLVM_MAJOR="${LLVM_VERSION%%.*}" \
     && ln -sfn "/usr/lib/llvm-${LLVM_MAJOR}/bin/clang" /usr/bin/clang \
     && ln -sfn "/usr/lib/llvm-${LLVM_MAJOR}/bin/clang++" /usr/bin/clang++
 
-# 3. Pinned Rust toolchains, Node.js and Cargo tools. install-tools.sh reads the
-#    pins from the manifest and performs its own permission fixes and smoke
-#    checks; it never runs apt.
-COPY install-tools.sh /tmp/install-tools.sh
+# 3. Pinned Rust toolchains, Node.js and Cargo tools.
 COPY toolchains.env /tmp/toolchains.env
-RUN chmod +x /tmp/install-tools.sh \
-    && /tmp/install-tools.sh /tmp/toolchains.env
+RUN source /tmp/toolchains.env \
+    && export RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo \
+    && export PATH="/usr/local/cargo/bin:/usr/local/bin:$PATH" \
+    && curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs -o /tmp/rustup-init.sh \
+    && sh /tmp/rustup-init.sh --no-modify-path --profile minimal --default-toolchain none -y \
+    && rm /tmp/rustup-init.sh \
+    && rustup toolchain install "$XILA_RUST_TOOLCHAIN" --profile minimal --component rustfmt,clippy,llvm-tools-preview \
+    && rustup target add --toolchain "$XILA_RUST_TOOLCHAIN" wasm32-unknown-unknown wasm32-wasip1 \
+    && rustup toolchain install "$XILA_NIGHTLY_TOOLCHAIN" --profile minimal --component rust-src,miri \
+    && rustup target add --toolchain "$XILA_NIGHTLY_TOOLCHAIN" wasm32-unknown-unknown i686-unknown-linux-gnu powerpc-unknown-linux-gnu \
+    && printf 'version = "12"\ndefault_toolchain = "%s"\nprofile = "minimal"\n\n[overrides]\n' "$XILA_RUST_TOOLCHAIN" > "$RUSTUP_HOME/settings.toml" \
+    && chmod -R a+rX "$RUSTUP_HOME" \
+    && curl -fsSL "https://raw.githubusercontent.com/cargo-bins/cargo-binstall/v${CARGO_BINSTALL_VERSION}/install-from-binstall-release.sh" -o /tmp/binstall.sh \
+    && BINSTALL_VERSION="$CARGO_BINSTALL_VERSION" bash /tmp/binstall.sh \
+    && rm /tmp/binstall.sh \
+    && cargo binstall --no-confirm --no-symlinks \
+         "cargo-make@${CARGO_MAKE_VERSION}" "trunk@${TRUNK_VERSION}" \
+         "taplo-cli@${TAPLO_VERSION}" "cargo-llvm-cov@${CARGO_LLVM_COV_VERSION}" \
+         "sccache@${SCCACHE_VERSION}" \
+    && case "$(dpkg --print-architecture)" in amd64) node_arch=x64 ;; arm64) node_arch=arm64 ;; *) echo "unsupported architecture" >&2; exit 1 ;; esac \
+    && node_dist_url="https://nodejs.org/dist/v${NODE_VERSION}" \
+    && node_tarball="node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" \
+    && mkdir -p /tmp/node \
+    && curl -fsSL "${node_dist_url}/${node_tarball}" -o "/tmp/node/${node_tarball}" \
+    && curl -fsSL "${node_dist_url}/SHASUMS256.txt" -o /tmp/node/SHASUMS256.txt \
+    && (cd /tmp/node && grep " ${node_tarball}\$" SHASUMS256.txt | sha256sum -c -) \
+    && tar -xJf "/tmp/node/${node_tarball}" -C /usr/local --strip-components=1 \
+    && rm -rf /tmp/node \
+    && chmod -R a+rwX "$CARGO_HOME" \
+    && clang --version && node --version && npm --version \
+    && cargo make --version && cargo +"$XILA_NIGHTLY_TOOLCHAIN" miri --version
 
 # 4. Runtime contract consumed by scripts/xila-dev and project CI. The XILA_*
 #    pins, RUSTUP_TOOLCHAIN and LIBCLANG_PATH mirror toolchains.env and the

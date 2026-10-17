@@ -162,4 +162,12 @@ if XILA_DEV_ENGINE=docker bash "$tmp/fake-env/scripts/xila-dev" \
   fail "wrapper accepted a manifest without XILA_RUST_TOOLCHAIN"
 fi
 
+# 14. The image targets Debian Trixie and publishes both supported architectures.
+dockerfile="$REPO_ROOT/Dockerfile"
+workflow="$REPO_ROOT/.github/workflows/publish-image.yml"
+assert_contains "$(<"$dockerfile")" "FROM debian:trixie"
+assert_not_contains "$(<"$dockerfile")" "install-tools.sh"
+assert_contains "$(<"$dockerfile")" "arm64) node_arch=arm64"
+assert_contains "$(<"$workflow")" "platforms: linux/amd64,linux/arm64"
+
 echo "PASS: all xila-dev wrapper tests"

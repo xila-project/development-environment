@@ -12,7 +12,7 @@ needed to build, test and lint an Xila checkout.
 
 ## Contents
 
-Built from `ubuntu:24.04`, the image ships the pinned toolchain:
+Built from `debian:trixie`, the image ships the pinned toolchain:
 
 - Rust stable and nightly toolchains, with `rustfmt`, `clippy`,
   `llvm-tools-preview`, `rust-src`, `miri`, and the `wasm32-unknown-unknown`,
@@ -28,7 +28,7 @@ Built from `ubuntu:24.04`, the image ships the pinned toolchain:
 ## Version pins
 
 `toolchains.env` is the **single source of truth** for tool versions. The
-installer (`install-tools.sh`) and the image read their pins from it; do not
+Dockerfile reads its pins from it; do not
 duplicate versions elsewhere. Downstream project CI will consume the same file in
 a later phase. To upgrade a tool, edit that file and rebuild the image. For most
 tools this invalidates only the toolchain layer; `LLVM_VERSION` is the exception,
@@ -76,10 +76,10 @@ Publishing is automated by `.github/workflows/publish-image.yml`, which pushes t
 `ghcr.io/xila-project/core-dev` on every push to `main` and on `v*` tags. Those
 builds are tagged `main`, `latest`, `sha-<short>`, and — for a semver tag
 `vX.Y.Z` — `X.Y.Z` and `X.Y`. Pull requests build the image without publishing
-it. Images are `linux/amd64` only: Xila needs an x86_64 host to build (its Devbox
-setup asserts `Linux:x86_64` and `install-tools.sh` hardcodes the `linux-x64`
-Node.js tarball), so an arm64 image would be unusable; an amd64 image still runs
-on Apple Silicon via emulation.
+it. Images are published for `linux/amd64` and `linux/arm64`. The Dockerfile
+selects the matching Node.js distribution and installs the toolchains on the
+target architecture. GitHub Actions uses BuildKit's GitHub Actions cache to
+reuse layers between builds.
 
 The first push creates the GHCR package `ghcr.io/xila-project/core-dev`, whose
 visibility defaults to **private**; anonymous `docker pull` returns a 403 until a
@@ -99,7 +99,7 @@ independent checksum or signature check, so their integrity rests on TLS plus
 the pinned GitHub tag/URL they are fetched from.
 
 Clang and `libclang` come from the third-party `apt.llvm.org` repository (the
-`llvm-toolchain-noble-22` suite). Its signing key is fetched over HTTPS and the
+`llvm-toolchain-trixie-22` suite). Its signing key is fetched over HTTPS and the
 repository is scoped with `signed-by`, but the key is not pinned to a
 fingerprint: trust in it is trust-on-first-use over TLS.
 
@@ -174,7 +174,7 @@ Deleting the directory resets the environment.
   the project as the workspace.
 
 - **The LLVM apt pin is major-version only, so rebuilds are not byte-reproducible
-  over time.** The apt suite is `llvm-toolchain-noble-22`, while the guard pins
+  over time.** The apt suite is `llvm-toolchain-trixie-22`, while the guard pins
   the exact `LLVM_VERSION=22.1.8`. If `apt.llvm.org` republishes a package within
   the 22.x line, the archive no longer serves 22.1.8 and the build-time version
   assertion fails loudly until the pin is bumped — deliberately, so a different

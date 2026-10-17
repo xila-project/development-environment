@@ -1,9 +1,6 @@
 # Build and publish the canonical Xila development image to GHCR.
 #
-# The image is `linux/amd64` only. Xila requires an x86_64 host to build: its
-# Devbox setup asserts `Linux:x86_64` and `install-tools.sh` hardcodes the
-# `linux-x64` Node.js tarball, so an arm64 image would be unusable. An amd64
-# image still runs on Apple Silicon via emulation, so we do not add QEMU/arm64.
+# Publish native amd64 and arm64 development images.
 name: Publish development image
 
 on:
@@ -90,7 +87,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # Pull requests build without publishing, and load the image so it can

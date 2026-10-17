@@ -1,5 +1,5 @@
-# Keep the Docker build context small. The Dockerfile only needs `packages.txt`,
-# `install-tools.sh` and `toolchains.env`, all at the repository root.
+# Keep the Docker build context small. The Dockerfile only needs `packages.txt`
+# and `toolchains.env`, both at the repository root.
 
 # Version control and local tooling state.
 .git
