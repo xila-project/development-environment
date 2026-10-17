@@ -90,12 +90,15 @@ EOF
 chmod -R a+rX "$RUSTUP_HOME" "$CARGO_HOME"
 
 # 6. cargo-binstall downloads prebuilt binaries, keeping image builds fast.
+#    The installer fetches from `latest` unless BINSTALL_VERSION is set, so pin
+#    it to the manifest value (otherwise the image drifts off the pin). The
+#    installer accepts both `1.2.3` and `v1.2.3`; it normalises the prefix.
 if [[ ! -x "$CARGO_HOME/bin/cargo-binstall" ]]; then
   binstall_installer="$(mktemp)"
   curl -fsSL \
     "https://raw.githubusercontent.com/cargo-bins/cargo-binstall/v${CARGO_BINSTALL_VERSION}/install-from-binstall-release.sh" \
     -o "$binstall_installer"
-  bash "$binstall_installer"
+  BINSTALL_VERSION="$CARGO_BINSTALL_VERSION" bash "$binstall_installer"
   rm -f "$binstall_installer"
 fi
 
