@@ -24,6 +24,8 @@ ENV_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Load the version pins (XILA_RUST_TOOLCHAIN, ...). Plain KEY=VALUE lines.
 # shellcheck source=/dev/null
 source "$ENV_ROOT/toolchains.env"
+# Fail fast on a malformed manifest instead of emitting `-e RUSTUP_TOOLCHAIN=`.
+: "${XILA_RUST_TOOLCHAIN:?toolchains.env must define a non-empty XILA_RUST_TOOLCHAIN}"
 
 default_image="ghcr.io/xila-project/core-dev:main"
 
@@ -212,14 +214,20 @@ base_args() {
     # is no Wayland session at all.
     if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
       BASE_ARGS+=(-e WAYLAND_DISPLAY)
-      if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
-        local socket="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
-        BASE_ARGS+=(
-          -e XDG_RUNTIME_DIR
-          -v "$socket:$socket"
-        )
-      else
+      if [[ -z "${XDG_RUNTIME_DIR:-}" ]]; then
         echo "warning: WAYLAND_DISPLAY set but XDG_RUNTIME_DIR unset; cannot mount the Wayland socket" >&2
+      else
+        local socket="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+        if [[ -e "$socket" ]]; then
+          BASE_ARGS+=(
+            -e XDG_RUNTIME_DIR
+            -v "$socket:$socket"
+          )
+        else
+          # Do not let the engine silently create a host directory in place of
+          # the socket; skip the mount and tell the user.
+          echo "warning: Wayland socket not found: $socket; not mounting it" >&2
+        fi
       fi
       [[ -e /dev/dri ]] && BASE_ARGS+=(--device /dev/dri)
     elif [[ -n "${DISPLAY:-}" ]]; then
