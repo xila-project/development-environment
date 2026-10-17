@@ -168,8 +168,13 @@ workflow="$REPO_ROOT/.github/workflows/publish-image.yml"
 assert_contains "$(<"$dockerfile")" "FROM debian:trixie"
 assert_not_contains "$(<"$dockerfile")" "install-tools.sh"
 assert_contains "$(<"$dockerfile")" "arm64) node_arch=arm64"
-assert_contains "$(<"$workflow")" "linux/amd64,linux/arm64"
-assert_contains "$(<"$workflow")" "docker/setup-qemu-action@v3"
-assert_contains "$(<"$workflow")" "cache-to: type=gha,scope=core-dev,mode=max"
+assert_contains "$(<"$workflow")" "platform: linux/amd64"
+assert_contains "$(<"$workflow")" "platform: linux/arm64"
+assert_not_contains "$(<"$workflow")" "docker/setup-qemu-action@v3"
+assert_contains "$(<"$workflow")" 'runs-on: ${{ matrix.runner }}'
+assert_contains "$(<"$workflow")" "ubuntu-24.04-arm"
+assert_contains "$(<"$workflow")" "docker buildx imagetools create"
+assert_contains "$(<"$workflow")" 'flavor: latest=false,suffix=-${{ matrix.arch }}'
+assert_contains "$(<"$workflow")" 'cache-to: type=gha,scope=core-dev-${{ matrix.arch }},mode=max'
 
 echo "PASS: all xila-dev wrapper tests"

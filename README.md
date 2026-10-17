@@ -78,8 +78,10 @@ builds are tagged `main`, `latest`, `sha-<short>`, and — for a semver tag
 `vX.Y.Z` — `X.Y.Z` and `X.Y`. Pull requests build the image without publishing
 it. Images are published for `linux/amd64` and `linux/arm64`. The Dockerfile
 selects the matching Node.js distribution and installs the toolchains on the
-target architecture. GitHub Actions uses BuildKit's GitHub Actions cache to
-reuse layers between builds.
+target architecture. GitHub Actions builds each architecture on a matching
+native runner, smoke-tests both architectures on pull requests, and combines
+the published images under the regular tags. BuildKit caches are kept separate
+per architecture.
 
 The first push creates the GHCR package `ghcr.io/xila-project/core-dev`, whose
 visibility defaults to **private**; anonymous `docker pull` returns a 403 until a
