@@ -97,4 +97,11 @@ assert_contains "$out" "rustc"
 assert_contains "$out" "node"
 assert_absent "$tmp/.dev-environment"
 
+# 9. --gui is gated on WAYLAND_DISPLAY alone: the flag is forwarded even when
+#    XDG_RUNTIME_DIR is unset (and X11 is unavailable), and still no --privileged.
+out="$(env -u XDG_RUNTIME_DIR -u DISPLAY XILA_DEV_ENGINE=docker WAYLAND_DISPLAY=wayland-0 \
+  "$WRAPPER" --print --gui --workspace "$tmp" run true 2>/dev/null)"
+assert_contains "$out" "-e WAYLAND_DISPLAY"
+assert_not_contains "$out" "--privileged"
+
 echo "PASS: all xila-dev wrapper tests"

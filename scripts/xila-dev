@@ -207,13 +207,20 @@ base_args() {
 
   # Opt-in host access. Off unless explicitly requested.
   if [[ "$gui" == "1" ]]; then
-    if [[ -n "${WAYLAND_DISPLAY:-}" && -n "${XDG_RUNTIME_DIR:-}" ]]; then
-      local socket="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
-      BASE_ARGS+=(
-        -e WAYLAND_DISPLAY
-        -e XDG_RUNTIME_DIR
-        -v "$socket:$socket"
-      )
+    # Gate on WAYLAND_DISPLAY alone: a Wayland session exists whenever it is
+    # set, even if XDG_RUNTIME_DIR is missing. Only fall back to X11 when there
+    # is no Wayland session at all.
+    if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+      BASE_ARGS+=(-e WAYLAND_DISPLAY)
+      if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+        local socket="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+        BASE_ARGS+=(
+          -e XDG_RUNTIME_DIR
+          -v "$socket:$socket"
+        )
+      else
+        echo "warning: WAYLAND_DISPLAY set but XDG_RUNTIME_DIR unset; cannot mount the Wayland socket" >&2
+      fi
       [[ -e /dev/dri ]] && BASE_ARGS+=(--device /dev/dri)
     elif [[ -n "${DISPLAY:-}" ]]; then
       # X11 fallback, only when there is no Wayland session.
