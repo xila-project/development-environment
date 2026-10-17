@@ -276,13 +276,13 @@ case "$subcommand" in
     base_args
     case "$subcommand" in
       run)
-        invoke "$engine" "${BASE_ARGS[@]}" "$image" "$@"
+        invoke "$engine" run "${BASE_ARGS[@]}" "$image" "$@"
         ;;
       shell)
-        invoke "$engine" "${BASE_ARGS[@]}" "$image" bash -l
+        invoke "$engine" run "${BASE_ARGS[@]}" "$image" bash -l
         ;;
       check)
-        invoke "$engine" "${BASE_ARGS[@]}" "$image" cargo make check
+        invoke "$engine" run "${BASE_ARGS[@]}" "$image" cargo make check
         ;;
       doctor)
         {
@@ -309,7 +309,7 @@ case "$subcommand" in
             "TRUNK_CACHE=/workspace/.dev-environment/trunk-cache" \
             "RUSTUP_TOOLCHAIN=$XILA_RUST_TOOLCHAIN"
         } >&2
-        invoke "${engine}" "${BASE_ARGS[@]}" "$image" \
+        invoke "$engine" run "${BASE_ARGS[@]}" "$image" \
           bash -lc 'rustc --version; cargo --version; node --version; cargo make --version'
         ;;
     esac

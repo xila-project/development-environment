@@ -43,6 +43,14 @@ assert_absent() {
   return 0
 }
 
+assert_starts_with() {
+  local haystack="$1" needle="$2"
+  if [[ "$haystack" != "$needle"* ]]; then
+    echo "  in command: $haystack" >&2
+    fail "expected output to start with: $needle"
+  fi
+}
+
 [[ -x "$WRAPPER" ]] || fail "wrapper is missing or not executable: $WRAPPER"
 
 tmp="$(mktemp -d)"
@@ -103,5 +111,19 @@ out="$(env -u XDG_RUNTIME_DIR -u DISPLAY XILA_DEV_ENGINE=docker WAYLAND_DISPLAY=
   "$WRAPPER" --print --gui --workspace "$tmp" run true 2>/dev/null)"
 assert_contains "$out" "-e WAYLAND_DISPLAY"
 assert_not_contains "$out" "--privileged"
+
+# 10. run/shell/check/doctor must pass the `run` verb to the engine first.
+for sub in run shell check doctor; do
+  out="$(XILA_DEV_ENGINE=docker "$WRAPPER" --print --workspace "$tmp" "$sub" 2>/dev/null)"
+  assert_starts_with "$out" "docker run "
+done
+
+# 11. build/pull are engine verbs, never `docker run`.
+out="$(XILA_DEV_ENGINE=docker "$WRAPPER" --print --workspace "$tmp" build)"
+assert_starts_with "$out" "docker build "
+assert_not_contains "$out" "docker run "
+out="$(XILA_DEV_ENGINE=docker "$WRAPPER" --print --workspace "$tmp" pull)"
+assert_starts_with "$out" "docker pull "
+assert_not_contains "$out" "docker run "
 
 echo "PASS: all xila-dev wrapper tests"
