@@ -1,0 +1,129 @@
+# Build and publish the canonical Xila development image to GHCR.
+#
+# The image is `linux/amd64` only. Xila requires an x86_64 host to build: its
+# Devbox setup asserts `Linux:x86_64` and `install-tools.sh` hardcodes the
+# `linux-x64` Node.js tarball, so an arm64 image would be unusable. An amd64
+# image still runs on Apple Silicon via emulation, so we do not add QEMU/arm64.
+name: Publish development image
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege by default; the publish job opts into `packages: write`.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Cheap gate on every trigger: no image build here.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Run xila-dev wrapper tests
+        run: bash scripts/tests/xila-dev.test.sh
+
+      - name: Lint the Dockerfile with BuildKit
+        run: docker build --check .
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    # The build takes ~10-20 min; allow headroom.
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # The image is ~5 GB and the runner's root disk is tight, so drop the
+      # preinstalled bulk before building.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          if [ -n "${AGENT_TOOLSDIRECTORY:-}" ]; then
+            sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          fi
+          docker image prune --all --force
+          df -h /
+
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/xila-project/core-dev
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Pull requests build without publishing, and load the image so it can
+          # be smoke-tested locally in the runner. `load: true` cannot carry
+          # attestations, so provenance/SBOM are only enabled when pushing.
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
+          provenance: ${{ github.event_name != 'pull_request' }}
+          sbom: ${{ github.event_name != 'pull_request' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Acceptance gate: every pinned tool must be present and usable.
+      - name: Smoke-test the image
+        env:
+          IMAGE_ID: ${{ steps.build.outputs.imageid }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            image="$IMAGE_ID"
+          else
+            image="ghcr.io/xila-project/core-dev@$IMAGE_DIGEST"
+            docker pull "$image"
+          fi
+          echo "Smoke-testing $image"
+          docker run --rm "$image" clang --version
+          docker run --rm "$image" rustc --version
+          docker run --rm "$image" cargo --version
+          docker run --rm "$image" node --version
+          docker run --rm "$image" cargo make --version
+          docker run --rm "$image" taplo --version
+          docker run --rm "$image" sccache --version
+          docker run --rm "$image" cargo llvm-cov --version
+          docker run --rm "$image" bash -lc 'clang --version | grep -F 22.1.8'
+          docker run --rm "$image" bash -lc 'test -e "$LIBCLANG_PATH/libclang.so"'
