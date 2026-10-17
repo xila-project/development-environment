@@ -53,17 +53,36 @@ ENV CC=clang \
 #    bind mount.
 RUN chmod -R a+rwX /usr/local/cargo
 
-# 5. Build-time sanity check: the pinned tools, both pinned toolchains and
-#    libclang must be usable. A multi-argument `command -v` reports success even
-#    when a name is missing, so assert each tool individually as well.
+# 5. Build-time sanity check: the pinned tools, both pinned toolchains, the
+#    pinned cargo-binstall and libclang must be usable.
+#    The XILA_*/RUSTUP_TOOLCHAIN ENV above are hardcoded because Docker cannot
+#    read toolchains.env at ENV time, so guard them against drift: save the ENV
+#    values, source the still-present manifest, and fail (naming the key) if they
+#    disagree. RUSTUP_AUTO_INSTALL=0 keeps the `cargo +toolchain` checks honest —
+#    a missing toolchain fails loudly instead of being downloaded. A
+#    multi-argument `command -v` reports success even when a name is missing, so
+#    assert each tool individually as well.
 RUN test -e "$LIBCLANG_PATH/libclang.so" \
+    && env_rust_toolchain="$XILA_RUST_TOOLCHAIN" \
+    && env_nightly_toolchain="$XILA_NIGHTLY_TOOLCHAIN" \
+    && env_rustup_toolchain="$RUSTUP_TOOLCHAIN" \
+    && source /tmp/toolchains.env \
+    && { [[ "$env_rust_toolchain" == "$XILA_RUST_TOOLCHAIN" ]] \
+         || { echo "error: Dockerfile ENV XILA_RUST_TOOLCHAIN='$env_rust_toolchain' drifted from toolchains.env XILA_RUST_TOOLCHAIN='$XILA_RUST_TOOLCHAIN'" >&2; exit 1; }; } \
+    && { [[ "$env_nightly_toolchain" == "$XILA_NIGHTLY_TOOLCHAIN" ]] \
+         || { echo "error: Dockerfile ENV XILA_NIGHTLY_TOOLCHAIN='$env_nightly_toolchain' drifted from toolchains.env XILA_NIGHTLY_TOOLCHAIN='$XILA_NIGHTLY_TOOLCHAIN'" >&2; exit 1; }; } \
+    && { [[ "$env_rustup_toolchain" == "$XILA_RUST_TOOLCHAIN" ]] \
+         || { echo "error: Dockerfile ENV RUSTUP_TOOLCHAIN='$env_rustup_toolchain' must mirror toolchains.env XILA_RUST_TOOLCHAIN='$XILA_RUST_TOOLCHAIN'" >&2; exit 1; }; } \
     && command -v bash clang cargo rustup node npm trunk taplo sccache cargo-make \
     && for tool in bash clang cargo rustup node npm trunk taplo sccache cargo-make; do \
          command -v "$tool" >/dev/null || { echo "error: sanity check failed: missing $tool" >&2; exit 1; }; \
        done \
     && cargo llvm-cov --version \
-    && cargo "+$XILA_RUST_TOOLCHAIN" --version \
-    && cargo "+$XILA_NIGHTLY_TOOLCHAIN" --version
+    && binstall_version="$(cargo binstall -V)" \
+    && { [[ "$binstall_version" == "$CARGO_BINSTALL_VERSION" || "$binstall_version" == "cargo-binstall $CARGO_BINSTALL_VERSION" ]] \
+         || { echo "error: cargo-binstall version '$binstall_version' does not match pinned '$CARGO_BINSTALL_VERSION'" >&2; exit 1; }; } \
+    && RUSTUP_AUTO_INSTALL=0 cargo "+$XILA_RUST_TOOLCHAIN" --version \
+    && RUSTUP_AUTO_INSTALL=0 cargo "+$XILA_NIGHTLY_TOOLCHAIN" --version
 
 # 6. OCI metadata.
 LABEL org.opencontainers.image.source="https://github.com/Xila-Project/development-environment" \
