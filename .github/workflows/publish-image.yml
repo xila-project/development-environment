@@ -110,6 +110,9 @@ jobs:
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           set -euo pipefail
+          # Source the manifest so the clang assertion reads LLVM_VERSION from the
+          # single source of truth instead of duplicating the pin here.
+          set -a && . ./toolchains.env && set +a
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             image="$IMAGE_ID"
           else
@@ -125,5 +128,5 @@ jobs:
           docker run --rm "$image" taplo --version
           docker run --rm "$image" sccache --version
           docker run --rm "$image" cargo llvm-cov --version
-          docker run --rm "$image" bash -lc 'clang --version | grep -F 22.1.8'
+          docker run --rm -e LLVM_VERSION="$LLVM_VERSION" "$image" bash -lc 'clang --version | grep -F "$LLVM_VERSION"'
           docker run --rm "$image" bash -lc 'test -e "$LIBCLANG_PATH/libclang.so"'

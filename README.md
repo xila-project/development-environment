@@ -81,6 +81,14 @@ setup asserts `Linux:x86_64` and `install-tools.sh` hardcodes the `linux-x64`
 Node.js tarball), so an arm64 image would be unusable; an amd64 image still runs
 on Apple Silicon via emulation.
 
+The first push creates the GHCR package `ghcr.io/xila-project/core-dev`, whose
+visibility defaults to **private**; anonymous `docker pull` returns a 403 until a
+maintainer sets the package to public once in the organization's package
+settings. The image carries the `org.opencontainers.image.source` label (set in
+the `Dockerfile`), which links the package to this repository so it inherits
+repository-based permissions. `GITHUB_TOKEN`-authenticated pulls inside Actions
+work regardless of visibility.
+
 ### Download trust boundary
 
 The build downloads a few things over the network. Node.js is verified: the
