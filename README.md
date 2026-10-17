@@ -72,8 +72,14 @@ Pulling is for the published image:
 docker pull ghcr.io/xila-project/core-dev:main
 ```
 
-GHCR publishing is not part of this phase (see [Scope](#scope)), so today the
-local build above is the intended path.
+Publishing is automated by `.github/workflows/publish-image.yml`, which pushes to
+`ghcr.io/xila-project/core-dev` on every push to `main` and on `v*` tags. Those
+builds are tagged `main`, `latest`, `sha-<short>`, and — for a semver tag
+`vX.Y.Z` — `X.Y.Z` and `X.Y`. Pull requests build the image without publishing
+it. Images are `linux/amd64` only: Xila needs an x86_64 host to build (its Devbox
+setup asserts `Linux:x86_64` and `install-tools.sh` hardcodes the `linux-x64`
+Node.js tarball), so an arm64 image would be unusable; an amd64 image still runs
+on Apple Silicon via emulation.
 
 ### Download trust boundary
 
@@ -179,7 +185,8 @@ Both of these are off by default and only enabled when requested:
 
 ## Scope
 
-This image and the `scripts/xila-dev` wrapper are the deliverables of the current
-phase of [issue #414](https://github.com/Xila-Project/Core/issues/414). GHCR
-publishing, CI migration onto this image, Dev Container support and Devbox
-removal are later phases of that issue and are not covered here.
+This image, the `scripts/xila-dev` wrapper and the GHCR publishing workflow
+(`.github/workflows/publish-image.yml`) are the deliverables of the current phase
+of [issue #414](https://github.com/Xila-Project/Core/issues/414). CI migration
+onto this image, Dev Container support and Devbox removal are later phases of
+that issue and are not covered here.
