@@ -1,7 +1,5 @@
 # Base build tooling
 build-essential
-clang
-libclang-dev
 mold
 pkg-config
 cmake
