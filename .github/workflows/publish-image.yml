@@ -58,6 +58,9 @@ jobs:
       - name: Check out the repository
         uses: actions/checkout@v4
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -87,7 +90,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          # The Docker exporter used by PR smoke tests only loads one platform.
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # Pull requests build without publishing, and load the image so it can
@@ -97,8 +101,8 @@ jobs:
           load: ${{ github.event_name == 'pull_request' }}
           provenance: ${{ github.event_name != 'pull_request' }}
           sbom: ${{ github.event_name != 'pull_request' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=core-dev
+          cache-to: type=gha,scope=core-dev,mode=max
 
       # Acceptance gate: every pinned tool must be present and usable.
       - name: Smoke-test the image
