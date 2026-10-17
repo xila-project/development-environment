@@ -75,8 +75,9 @@ ENV CC=clang \
 #    pinned cargo-binstall, the pinned clang and libclang must be usable.
 #    The XILA_*/RUSTUP_TOOLCHAIN/LLVM_VERSION ENV above are hardcoded because
 #    Docker cannot read toolchains.env at ENV time, so guard them against drift:
-#    save the ENV values, source the still-present manifest (which overwrites
-#    LLVM_VERSION), and fail (naming the key) if they disagree.
+#    save the ENV values, assert the manifest still declares LLVM_VERSION,
+#    source the still-present manifest (which overwrites LLVM_VERSION), and fail
+#    (naming the key) if they disagree.
 #    RUSTUP_AUTO_INSTALL=0 keeps the `cargo +toolchain` checks honest — a missing
 #    toolchain fails loudly instead of being downloaded. A multi-argument
 #    `command -v` reports success even when a name is missing, so assert each
@@ -86,6 +87,8 @@ RUN test -e "$LIBCLANG_PATH/libclang.so" \
     && env_rust_toolchain="$XILA_RUST_TOOLCHAIN" \
     && env_nightly_toolchain="$XILA_NIGHTLY_TOOLCHAIN" \
     && env_rustup_toolchain="$RUSTUP_TOOLCHAIN" \
+    && { grep -qE '^[[:space:]]*LLVM_VERSION=' /tmp/toolchains.env \
+         || { echo "error: toolchains.env does not declare LLVM_VERSION" >&2; exit 1; }; } \
     && source /tmp/toolchains.env \
     && { [[ "$env_llvm_version" == "$LLVM_VERSION" ]] \
          || { echo "error: Dockerfile ENV LLVM_VERSION='$env_llvm_version' drifted from toolchains.env LLVM_VERSION='$LLVM_VERSION'" >&2; exit 1; }; } \
