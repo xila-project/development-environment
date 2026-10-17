@@ -12,6 +12,10 @@
 
 set -u
 
+# Drop inherited configuration that would make the constructed command depend on
+# the caller's environment: these override the image, engine and workspace.
+unset XILA_DEV_IMAGE XILA_DEV_ENGINE XILA_WORKSPACE
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WRAPPER="$REPO_ROOT/scripts/xila-dev"
 
@@ -70,10 +74,20 @@ assert_contains "$out" "echo hi"
 out="$(XILA_DEV_ENGINE=docker XILA_DEV_IMAGE=custom:test "$WRAPPER" --print --workspace "$tmp" run true)"
 assert_contains "$out" "custom:test"
 
-# 3. --gui forwards the Wayland socket and never escalates privileges.
-out="$(XILA_DEV_ENGINE=docker WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 \
+# 2b. Image override via the --image flag (distinct from the env form), and the
+#     flag must win over an inherited XILA_DEV_IMAGE.
+out="$(XILA_DEV_ENGINE=docker XILA_DEV_IMAGE=env-image:test \
+  "$WRAPPER" --print --image flag-image:test --workspace "$tmp" run true)"
+assert_contains "$out" "flag-image:test"
+assert_not_contains "$out" "env-image:test"
+
+# 3. --gui forwards an existing Wayland socket and never escalates privileges.
+mkdir -p "$tmp/wl"
+: > "$tmp/wl/wayland-0"
+out="$(XILA_DEV_ENGINE=docker WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR="$tmp/wl" \
   "$WRAPPER" --print --gui --workspace "$tmp" run true)"
-assert_contains "$out" "/run/user/1000/wayland-0"
+assert_contains "$out" "-v $tmp/wl/wayland-0:$tmp/wl/wayland-0"
+assert_contains "$out" "-e XDG_RUNTIME_DIR"
 assert_contains "$out" "WAYLAND_DISPLAY"
 assert_not_contains "$out" "--privileged"
 
@@ -95,7 +109,6 @@ out="$(XILA_DEV_ENGINE=docker "$WRAPPER" --print --workspace "$tmp" build)"
 assert_contains "$out" "build"
 assert_contains "$out" "--file"
 assert_contains "$out" "$REPO_ROOT/Dockerfile"
-assert_contains "$out" "$REPO_ROOT"
 
 # 8. doctor under --print resolves the probe without touching the filesystem.
 rm -rf "$tmp/.dev-environment"
@@ -125,5 +138,27 @@ assert_not_contains "$out" "docker run "
 out="$(XILA_DEV_ENGINE=docker "$WRAPPER" --print --workspace "$tmp" pull)"
 assert_starts_with "$out" "docker pull "
 assert_not_contains "$out" "docker run "
+
+# 12. --gui with a Wayland display whose socket does not exist: warn and skip the
+#     mount instead of letting the engine create a host directory.
+mkdir -p "$tmp/no-sock"
+err="$(XILA_DEV_ENGINE=docker WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR="$tmp/no-sock" \
+  "$WRAPPER" --print --gui --workspace "$tmp" run true 2>&1 >/dev/null)"
+out="$(XILA_DEV_ENGINE=docker WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR="$tmp/no-sock" \
+  "$WRAPPER" --print --gui --workspace "$tmp" run true 2>/dev/null)"
+assert_not_contains "$out" "$tmp/no-sock/wayland-0"
+assert_contains "$out" "-e WAYLAND_DISPLAY"
+assert_contains "$err" "Wayland socket not found"
+
+# 13. A malformed manifest (empty XILA_RUST_TOOLCHAIN) fails fast instead of
+#     emitting `-e RUSTUP_TOOLCHAIN=`. Copy the wrapper so ENV_ROOT resolves to a
+#     throwaway tree with its own toolchains.env.
+mkdir -p "$tmp/fake-env/scripts"
+cp "$WRAPPER" "$tmp/fake-env/scripts/xila-dev"
+: > "$tmp/fake-env/toolchains.env"
+if XILA_DEV_ENGINE=docker bash "$tmp/fake-env/scripts/xila-dev" \
+     --print --workspace "$tmp" run true >/dev/null 2>&1; then
+  fail "wrapper accepted a manifest without XILA_RUST_TOOLCHAIN"
+fi
 
 echo "PASS: all xila-dev wrapper tests"
