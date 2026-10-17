@@ -18,7 +18,7 @@ Built from `ubuntu:24.04`, the image ships the pinned toolchain:
   `llvm-tools-preview`, `rust-src`, `miri`, and the `wasm32-unknown-unknown`,
   `wasm32-wasip1`, `i686-unknown-linux-gnu` and `powerpc-unknown-linux-gnu`
   targets.
-- Clang / `libclang` 21.1.8 (from apt.llvm.org) with the WASM cross-compilation
+- Clang / `libclang` 22.1.8 (from apt.llvm.org) with the WASM cross-compilation
   environment variables set.
 - Node.js and npm (for the web tooling).
 - Cargo tools: `cargo-make`, `trunk`, `taplo`, `cargo-llvm-cov`, `sccache` and
@@ -45,14 +45,16 @@ resolve to it. A build-time sanity check guards the toolchains, the pinned
 `cargo-binstall` version, `libclang` and the installed `clang` version, and fails
 the build when those hardcoded `ENV` values drift from the manifest.
 
-> **Clang version divergence (temporary).** This image ships clang 21.1.8, which
-> is what Devbox resolved and what builds Xila on the maintainer's machine.
-> Project CI still uses the `ubuntu-latest` apt `clang` (18). The two will be
-> aligned in the later CI-migration phase; until then, native and WASM builds
-> that succeed here are validated against 21.1.8, not CI's 18.
+> **Clang version divergence (temporary).** This image ships clang 22.1.8, the
+> system clang that actually builds Xila on the maintainer's machine (Debian
+> clang 22.1.8). It is distinct from both Devbox's declared clang (21.1.8),
+> which real builds bypass, and project CI, which still uses the `ubuntu-latest`
+> apt `clang` (18). The three will be aligned in the later CI-migration phase;
+> until then, native and WASM builds that succeed here are validated against
+> 22.1.8, not CI's 18.
 
-> **Residual LLVM runtime.** No clang or `libclang` 18 remains in the image — the
-> compilers are 21.1.8. The GUI stack still pulls in a transitive runtime
+> **Residual LLVM runtime.** No clang or `libclang` 18 or 21 remains in the image
+> — the compilers are 22.1.8. The GUI stack still pulls in a transitive runtime
 > `libllvm20` (via mesa/`libgl-dev`); that is a library dependency of the GUI
 > stack, not a compiler, and does not change the toolchain version.
 
@@ -83,7 +85,7 @@ independent checksum or signature check, so their integrity rests on TLS plus
 the pinned GitHub tag/URL they are fetched from.
 
 Clang and `libclang` come from the third-party `apt.llvm.org` repository (the
-`llvm-toolchain-noble-21` suite). Its signing key is fetched over HTTPS and the
+`llvm-toolchain-noble-22` suite). Its signing key is fetched over HTTPS and the
 repository is scoped with `signed-by`, but the key is not pinned to a
 fingerprint: trust in it is trust-on-first-use over TLS.
 
@@ -158,9 +160,9 @@ Deleting the directory resets the environment.
   the project as the workspace.
 
 - **The LLVM apt pin is major-version only, so rebuilds are not byte-reproducible
-  over time.** The apt suite is `llvm-toolchain-noble-21`, while the guard pins
-  the exact `LLVM_VERSION=21.1.8`. If `apt.llvm.org` republishes a package within
-  the 21.x line, the archive no longer serves 21.1.8 and the build-time version
+  over time.** The apt suite is `llvm-toolchain-noble-22`, while the guard pins
+  the exact `LLVM_VERSION=22.1.8`. If `apt.llvm.org` republishes a package within
+  the 22.x line, the archive no longer serves 22.1.8 and the build-time version
   assertion fails loudly until the pin is bumped — deliberately, so a different
   patch level is never installed silently.
 
