@@ -18,7 +18,8 @@ Built from `ubuntu:24.04`, the image ships the pinned toolchain:
   `llvm-tools-preview`, `rust-src`, `miri`, and the `wasm32-unknown-unknown`,
   `wasm32-wasip1`, `i686-unknown-linux-gnu` and `powerpc-unknown-linux-gnu`
   targets.
-- Clang / `libclang` with the WASM cross-compilation environment variables set.
+- Clang / `libclang` 21.1.8 (from apt.llvm.org) with the WASM cross-compilation
+  environment variables set.
 - Node.js and npm (for the web tooling).
 - Cargo tools: `cargo-make`, `trunk`, `taplo`, `cargo-llvm-cov`, `sccache` and
   `cargo-binstall`.
@@ -34,9 +35,18 @@ invalidates only the toolchain layer.
 
 A few values that Docker cannot read from the file at `ENV` time are baked into
 the `Dockerfile`: the default `RUSTUP_TOOLCHAIN` mirrors this manifest, and
-`LIBCLANG_PATH` points at the base image's `clang`. A build-time sanity check
-guards the toolchains, the pinned `cargo-binstall` version and `libclang`, and
-fails the build when those hardcoded `ENV` values drift from the manifest.
+`LIBCLANG_PATH` points at the pinned `clang`. `LLVM_VERSION` lives in
+`toolchains.env`, while the `Dockerfile` pins the matching apt.llvm.org `clang`
+and `libclang` and sets the `CC`/`CXX` (including the `wasm32` overrides) that
+resolve to it. A build-time sanity check guards the toolchains, the pinned
+`cargo-binstall` version, `libclang` and the installed `clang` version, and fails
+the build when those hardcoded `ENV` values drift from the manifest.
+
+> **Clang version divergence (temporary).** This image ships clang 21.1.8, which
+> is what Devbox resolved and what builds Xila on the maintainer's machine.
+> Project CI still uses the `ubuntu-latest` apt `clang` (18). The two will be
+> aligned in the later CI-migration phase; until then, native and WASM builds
+> that succeed here are validated against 21.1.8, not CI's 18.
 
 ## Building and pulling
 
