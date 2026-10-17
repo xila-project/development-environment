@@ -106,37 +106,36 @@ ENV CC=clang \
 #    source the still-present manifest (which overwrites LLVM_VERSION), and fail
 #    (naming the key) if they disagree.
 #    RUSTUP_AUTO_INSTALL=0 keeps the `cargo +toolchain` checks honest — a missing
-#    toolchain fails loudly instead of being downloaded. A multi-argument
-#    `command -v` reports success even when a name is missing, so assert each
-#    tool individually as well.
-RUN test -e "$LIBCLANG_PATH/libclang.so" \
-    && env_llvm_version="$LLVM_VERSION" \
-    && env_rust_toolchain="$XILA_RUST_TOOLCHAIN" \
-    && env_nightly_toolchain="$XILA_NIGHTLY_TOOLCHAIN" \
-    && env_rustup_toolchain="$RUSTUP_TOOLCHAIN" \
-    && { grep -qE '^[[:space:]]*LLVM_VERSION=' /tmp/toolchains.env \
-         || { echo "error: toolchains.env does not declare LLVM_VERSION" >&2; exit 1; }; } \
-    && source /tmp/toolchains.env \
-    && { [[ "$env_llvm_version" == "$LLVM_VERSION" ]] \
-         || { echo "error: Dockerfile ENV LLVM_VERSION='$env_llvm_version' drifted from toolchains.env LLVM_VERSION='$LLVM_VERSION'" >&2; exit 1; }; } \
-    && { [[ "$env_rust_toolchain" == "$XILA_RUST_TOOLCHAIN" ]] \
-         || { echo "error: Dockerfile ENV XILA_RUST_TOOLCHAIN='$env_rust_toolchain' drifted from toolchains.env XILA_RUST_TOOLCHAIN='$XILA_RUST_TOOLCHAIN'" >&2; exit 1; }; } \
-    && { [[ "$env_nightly_toolchain" == "$XILA_NIGHTLY_TOOLCHAIN" ]] \
-         || { echo "error: Dockerfile ENV XILA_NIGHTLY_TOOLCHAIN='$env_nightly_toolchain' drifted from toolchains.env XILA_NIGHTLY_TOOLCHAIN='$XILA_NIGHTLY_TOOLCHAIN'" >&2; exit 1; }; } \
-    && { [[ "$env_rustup_toolchain" == "$XILA_RUST_TOOLCHAIN" ]] \
-         || { echo "error: Dockerfile ENV RUSTUP_TOOLCHAIN='$env_rustup_toolchain' must mirror toolchains.env XILA_RUST_TOOLCHAIN='$XILA_RUST_TOOLCHAIN'" >&2; exit 1; }; } \
-    && { clang --version | grep -Fq "clang version $LLVM_VERSION" \
-         || { echo "error: installed clang does not match pinned LLVM_VERSION='$LLVM_VERSION'" >&2; clang --version >&2; exit 1; }; } \
-    && command -v bash clang cargo rustup node npm trunk taplo sccache cargo-make \
-    && for tool in bash clang cargo rustup node npm trunk taplo sccache cargo-make; do \
-         command -v "$tool" >/dev/null || { echo "error: sanity check failed: missing $tool" >&2; exit 1; }; \
-       done \
-    && cargo llvm-cov --version \
-    && binstall_version="$(cargo binstall -V)" \
-    && { [[ "$binstall_version" == "$CARGO_BINSTALL_VERSION" || "$binstall_version" == "cargo-binstall $CARGO_BINSTALL_VERSION" ]] \
-         || { echo "error: cargo-binstall version '$binstall_version' does not match pinned '$CARGO_BINSTALL_VERSION'" >&2; exit 1; }; } \
-    && RUSTUP_AUTO_INSTALL=0 cargo "+$XILA_RUST_TOOLCHAIN" --version \
-    && RUSTUP_AUTO_INSTALL=0 cargo "+$XILA_NIGHTLY_TOOLCHAIN" --version
+#    toolchain fails loudly instead of being downloaded.
+RUN set -e; \
+    assert_pin_matches() { \
+      local docker_key="$1" docker_value="$2" manifest_key="$3" manifest_value="$4"; \
+      if [[ "$docker_value" != "$manifest_value" ]]; then \
+        printf "error: Dockerfile ENV %s='%s' drifted from toolchains.env %s='%s'\\n" \
+          "$docker_key" "$docker_value" "$manifest_key" "$manifest_value" >&2; \
+        return 1; \
+      fi; \
+    }; \
+    test -e "$LIBCLANG_PATH/libclang.so"; \
+    env_llvm_version="$LLVM_VERSION"; \
+    env_rust_toolchain="$XILA_RUST_TOOLCHAIN"; \
+    env_nightly_toolchain="$XILA_NIGHTLY_TOOLCHAIN"; \
+    env_rustup_toolchain="$RUSTUP_TOOLCHAIN"; \
+    grep -qE '^[[:space:]]*LLVM_VERSION=' /tmp/toolchains.env || { echo "error: toolchains.env does not declare LLVM_VERSION" >&2; exit 1; }; \
+    source /tmp/toolchains.env; \
+    assert_pin_matches "LLVM_VERSION" "$env_llvm_version" "LLVM_VERSION" "$LLVM_VERSION"; \
+    assert_pin_matches "XILA_RUST_TOOLCHAIN" "$env_rust_toolchain" "XILA_RUST_TOOLCHAIN" "$XILA_RUST_TOOLCHAIN"; \
+    assert_pin_matches "XILA_NIGHTLY_TOOLCHAIN" "$env_nightly_toolchain" "XILA_NIGHTLY_TOOLCHAIN" "$XILA_NIGHTLY_TOOLCHAIN"; \
+    assert_pin_matches "RUSTUP_TOOLCHAIN" "$env_rustup_toolchain" "XILA_RUST_TOOLCHAIN" "$XILA_RUST_TOOLCHAIN"; \
+    clang --version | grep -Fq "clang version $LLVM_VERSION" || { echo "error: installed clang does not match pinned LLVM_VERSION='$LLVM_VERSION'" >&2; clang --version >&2; exit 1; }; \
+    for tool in bash clang cargo rustup node npm trunk taplo sccache cargo-make; do \
+      command -v "$tool" >/dev/null || { echo "error: sanity check failed: missing $tool" >&2; exit 1; }; \
+    done; \
+    cargo llvm-cov --version; \
+    binstall_version="$(cargo binstall -V)"; \
+    [[ "$binstall_version" == "$CARGO_BINSTALL_VERSION" || "$binstall_version" == "cargo-binstall $CARGO_BINSTALL_VERSION" ]] || { echo "error: cargo-binstall version '$binstall_version' does not match pinned '$CARGO_BINSTALL_VERSION'" >&2; exit 1; }; \
+    RUSTUP_AUTO_INSTALL=0 cargo "+$XILA_RUST_TOOLCHAIN" --version; \
+    RUSTUP_AUTO_INSTALL=0 cargo "+$XILA_NIGHTLY_TOOLCHAIN" --version
 
 # 6. OCI metadata.
 LABEL org.opencontainers.image.source="https://github.com/Xila-Project/development-environment" \

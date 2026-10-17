@@ -177,4 +177,10 @@ assert_contains "$(<"$workflow")" "docker buildx imagetools create"
 assert_contains "$(<"$workflow")" 'flavor: latest=false,suffix=-${{ matrix.arch }}'
 assert_contains "$(<"$workflow")" 'cache-to: type=gha,scope=core-dev-${{ matrix.arch }},mode=max'
 
+# The Dockerfile sanity checks keep pin comparisons readable and check tool
+# presence only once.
+assert_contains "$(<"$dockerfile")" "assert_pin_matches()"
+assert_contains "$(<"$dockerfile")" 'assert_pin_matches "RUSTUP_TOOLCHAIN"'
+assert_not_contains "$(<"$dockerfile")" "command -v bash clang cargo rustup node npm trunk taplo sccache cargo-make"
+
 echo "PASS: all xila-dev wrapper tests"
