@@ -30,8 +30,11 @@ Built from `ubuntu:24.04`, the image ships the pinned toolchain:
 `toolchains.env` is the **single source of truth** for tool versions. The
 installer (`install-tools.sh`) and the image read their pins from it; do not
 duplicate versions elsewhere. Downstream project CI will consume the same file in
-a later phase. To upgrade a tool, edit that file and rebuild the image, which
-invalidates only the toolchain layer.
+a later phase. To upgrade a tool, edit that file and rebuild the image. For most
+tools this invalidates only the toolchain layer; `LLVM_VERSION` is the exception,
+since the `Dockerfile` also bakes it into an `ENV` and uses it to select the apt
+suite, so bumping it means updating the `Dockerfile` too and rebuilds the
+apt.llvm.org layer as well.
 
 A few values that Docker cannot read from the file at `ENV` time are baked into
 the `Dockerfile`: the default `RUSTUP_TOOLCHAIN` mirrors this manifest, and
@@ -47,6 +50,11 @@ the build when those hardcoded `ENV` values drift from the manifest.
 > Project CI still uses the `ubuntu-latest` apt `clang` (18). The two will be
 > aligned in the later CI-migration phase; until then, native and WASM builds
 > that succeed here are validated against 21.1.8, not CI's 18.
+
+> **Residual LLVM runtime.** No clang or `libclang` 18 remains in the image — the
+> compilers are 21.1.8. The GUI stack still pulls in a transitive runtime
+> `libllvm20` (via mesa/`libgl-dev`); that is a library dependency of the GUI
+> stack, not a compiler, and does not change the toolchain version.
 
 ## Building and pulling
 
@@ -73,6 +81,11 @@ tarball is checked against the official `SHASUMS256.txt` before extraction. The
 (`curl --proto '=https'`, certificate validation on) and executed without an
 independent checksum or signature check, so their integrity rests on TLS plus
 the pinned GitHub tag/URL they are fetched from.
+
+Clang and `libclang` come from the third-party `apt.llvm.org` repository (the
+`llvm-toolchain-noble-21` suite). Its signing key is fetched over HTTPS and the
+repository is scoped with `signed-by`, but the key is not pinned to a
+fingerprint: trust in it is trust-on-first-use over TLS.
 
 ## Using `scripts/xila-dev`
 
@@ -143,6 +156,13 @@ Deleting the directory resets the environment.
   usable repository and tasks that shell out to `git` (such as the workspace's
   font generation via a `github:` npm dependency) fail. Use a normal clone of
   the project as the workspace.
+
+- **The LLVM apt pin is major-version only, so rebuilds are not byte-reproducible
+  over time.** The apt suite is `llvm-toolchain-noble-21`, while the guard pins
+  the exact `LLVM_VERSION=21.1.8`. If `apt.llvm.org` republishes a package within
+  the 21.x line, the archive no longer serves 21.1.8 and the build-time version
+  assertion fails loudly until the pin is bumped — deliberately, so a different
+  patch level is never installed silently.
 
 ## Opt-in host access
 
