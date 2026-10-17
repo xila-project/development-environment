@@ -13,8 +13,9 @@
 set -u
 
 # Drop inherited configuration that would make the constructed command depend on
-# the caller's environment: these override the image, engine and workspace.
-unset XILA_DEV_IMAGE XILA_DEV_ENGINE XILA_WORKSPACE
+# the caller's environment: these override the image, engine, workspace and the
+# toolchain pin checked by the malformed-manifest guard.
+unset XILA_DEV_IMAGE XILA_DEV_ENGINE XILA_WORKSPACE XILA_RUST_TOOLCHAIN
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WRAPPER="$REPO_ROOT/scripts/xila-dev"
