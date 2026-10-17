@@ -49,11 +49,7 @@ ENV CC=clang \
     RUSTUP_TOOLCHAIN=1.99.0 \
     PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# 4. Let a bare `docker run` as any UID write the default CARGO_HOME without a
-#    bind mount.
-RUN chmod -R a+rwX /usr/local/cargo
-
-# 5. Build-time sanity check: the pinned tools, both pinned toolchains, the
+# 4. Build-time sanity check: the pinned tools, both pinned toolchains, the
 #    pinned cargo-binstall and libclang must be usable.
 #    The XILA_*/RUSTUP_TOOLCHAIN ENV above are hardcoded because Docker cannot
 #    read toolchains.env at ENV time, so guard them against drift: save the ENV
@@ -84,11 +80,11 @@ RUN test -e "$LIBCLANG_PATH/libclang.so" \
     && RUSTUP_AUTO_INSTALL=0 cargo "+$XILA_RUST_TOOLCHAIN" --version \
     && RUSTUP_AUTO_INSTALL=0 cargo "+$XILA_NIGHTLY_TOOLCHAIN" --version
 
-# 6. OCI metadata.
+# 5. OCI metadata.
 LABEL org.opencontainers.image.source="https://github.com/Xila-Project/development-environment" \
       org.opencontainers.image.title="xila-core-dev" \
       org.opencontainers.image.description="Canonical Xila development environment"
 
-# 7. Defaults for interactive use.
+# 6. Defaults for interactive use.
 WORKDIR /workspace
 CMD ["/bin/bash"]

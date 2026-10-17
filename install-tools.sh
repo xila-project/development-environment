@@ -130,3 +130,11 @@ node --version
 npm --version
 cargo make --version
 cargo +"$XILA_NIGHTLY_TOOLCHAIN" miri --version
+
+# 10. Let a bare `docker run` as any UID write the default CARGO_HOME without a
+#     bind mount. This runs after every install (and the smoke check) so no
+#     root-owned file added by cargo-binstall or the pinned Cargo tools keeps a
+#     restrictive mode; RUSTUP_HOME stays read/execute only. It replaces the
+#     former Dockerfile layer that repeated the whole cargo tree just to add
+#     write bits.
+chmod -R a+rwX "$CARGO_HOME"
