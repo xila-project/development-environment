@@ -1,0 +1,310 @@
+#!/usr/bin/env bash
+#
+# xila-dev — local developer wrapper for the canonical Xila development image.
+#
+# This script ships in the development-environment repository (the one that owns
+# the Dockerfile) but is meant to be run from an Xila checkout (the *workspace*)
+# that is bind-mounted at /workspace. It therefore resolves two roots:
+#
+#   ENV_ROOT  this repository's root (where the Dockerfile lives).
+#   WORKSPACE the Xila checkout to build (default: the current directory).
+#
+# All persistent state lives under $WORKSPACE/.dev-environment so container-side
+# builds are fast and the files stay host-owned. Pass --print to inspect the
+# resolved command without running it.
+#
+# Usage: xila-dev [global flags] <command> [args...]
+
+set -euo pipefail
+
+# --- Roots and manifest -----------------------------------------------------
+
+ENV_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Load the version pins (XILA_RUST_TOOLCHAIN, ...). Plain KEY=VALUE lines.
+# shellcheck source=/dev/null
+source "$ENV_ROOT/toolchains.env"
+
+default_image="ghcr.io/xila-project/core-dev:main"
+
+usage() {
+  cat <<'EOF'
+xila-dev — run the Xila development image against a workspace checkout.
+
+Usage:
+  xila-dev [global flags] <command> [args...]
+
+Commands:
+  build              Build the configured image from this repository's Dockerfile.
+  pull               Pull the configured image.
+  run <cmd...>       Run a command in the container (use `--` before the command).
+  shell              Start an interactive login shell in the workspace.
+  check              Run `cargo make check` in the workspace.
+  doctor             Print the resolved configuration and tool versions.
+
+Global flags:
+  --workspace <path>   Xila checkout to mount at /workspace (default: $PWD).
+  --image <ref>        Image to run (default: $XILA_DEV_IMAGE or the published image).
+  --engine docker|podman  Container engine (default: $XILA_DEV_ENGINE, else auto).
+  --gui                Forward the Wayland (or X11) display for GUI builds.
+  --device <path>      Pass a host device through (repeatable).
+  --verbose            Echo the resolved command to stderr before running it.
+  --print              Print the resolved command to stdout and exit.
+  -h, --help           Show this help.
+EOF
+}
+
+# --- Argument parsing -------------------------------------------------------
+
+workspace_arg=""
+image="${XILA_DEV_IMAGE:-$default_image}"
+engine_arg="${XILA_DEV_ENGINE:-}"
+gui=0
+verbose=0
+print_only=0
+devices=()
+subcommand=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    --workspace)
+      [[ $# -ge 2 ]] || { echo "xila-dev: --workspace requires a path" >&2; exit 2; }
+      workspace_arg="$2"
+      shift 2
+      ;;
+    --image)
+      [[ $# -ge 2 ]] || { echo "xila-dev: --image requires a reference" >&2; exit 2; }
+      image="$2"
+      shift 2
+      ;;
+    --engine)
+      [[ $# -ge 2 ]] || { echo "xila-dev: --engine requires docker or podman" >&2; exit 2; }
+      engine_arg="$2"
+      shift 2
+      ;;
+    --gui)
+      gui=1
+      shift
+      ;;
+    --device)
+      [[ $# -ge 2 ]] || { echo "xila-dev: --device requires a path" >&2; exit 2; }
+      devices+=("$2")
+      shift 2
+      ;;
+    --verbose)
+      verbose=1
+      shift
+      ;;
+    --print)
+      print_only=1
+      shift
+      ;;
+    build | pull | run | shell | check | doctor)
+      subcommand="$1"
+      shift
+      break
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      echo "xila-dev: unknown option or command: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -z "$subcommand" ]]; then
+  usage
+  exit 0
+fi
+
+# Everything after `run --` is the command, so drop a leading separator.
+if [[ "$subcommand" == "run" && "${1:-}" == "--" ]]; then
+  shift
+fi
+
+# --- Workspace, engine and state -------------------------------------------
+
+# Resolve to an absolute path without requiring the workspace to be a Git repo.
+workspace_raw="${workspace_arg:-${XILA_WORKSPACE:-$PWD}}"
+if [[ ! -d "$workspace_raw" ]]; then
+  echo "xila-dev: workspace does not exist: $workspace_raw" >&2
+  exit 1
+fi
+WORKSPACE="$(cd "$workspace_raw" && pwd)"
+STATE="$WORKSPACE/.dev-environment"
+
+if [[ -n "$engine_arg" ]]; then
+  case "$engine_arg" in
+    docker | podman) engine="$engine_arg" ;;
+    *)
+      echo "xila-dev: unsupported engine '$engine_arg' (use docker or podman)" >&2
+      exit 1
+      ;;
+  esac
+elif command -v docker >/dev/null 2>&1; then
+  engine="docker"
+elif command -v podman >/dev/null 2>&1; then
+  engine="podman"
+else
+  echo "xila-dev: neither 'docker' nor 'podman' found on PATH; install one or pass --engine" >&2
+  exit 1
+fi
+
+# The per-workspace state directories are only materialised when a container is
+# actually run. --print must stay side-effect free (no directories, no image).
+make_state_dirs() {
+  mkdir -p \
+    "$STATE/cargo" \
+    "$STATE/target" \
+    "$STATE/npm-cache" \
+    "$STATE/trunk-cache" \
+    "$STATE/home"
+}
+
+# --- Command construction ---------------------------------------------------
+
+# Base flags shared by every command that launches the image.
+base_args() {
+  BASE_ARGS=(
+    --rm
+    --interactive
+  )
+  # Only allocate a TTY when we actually have one, so pipelines/CI stay clean.
+  if [[ -t 1 ]]; then
+    BASE_ARGS+=(--tty)
+  fi
+
+  BASE_ARGS+=(--user "$(id -u):$(id -g)")
+  if [[ "$engine" == "podman" ]]; then
+    # Podman maps the host user into the container namespace.
+    BASE_ARGS+=(--userns=keep-id)
+  fi
+
+  BASE_ARGS+=(
+    -w /workspace
+    -v "$WORKSPACE:/workspace"
+    -v "$STATE/cargo:/workspace/.dev-environment/cargo"
+    -v "$STATE/target:/workspace/.dev-environment/target"
+    -v "$STATE/npm-cache:/workspace/.dev-environment/npm-cache"
+    -v "$STATE/trunk-cache:/workspace/.dev-environment/trunk-cache"
+    -v "$STATE/home:/workspace/.dev-environment/home"
+    -e HOME=/workspace/.dev-environment/home
+    -e CARGO_HOME=/workspace/.dev-environment/cargo
+    -e RUSTUP_HOME=/usr/local/rustup
+    -e CARGO_TARGET_DIR=/workspace/.dev-environment/target
+    -e npm_config_cache=/workspace/.dev-environment/npm-cache
+    -e TRUNK_CACHE=/workspace/.dev-environment/trunk-cache
+    -e RUSTUP_TOOLCHAIN="$XILA_RUST_TOOLCHAIN"
+  )
+
+  # Opt-in host access. Off unless explicitly requested.
+  if [[ "$gui" == "1" ]]; then
+    if [[ -n "${WAYLAND_DISPLAY:-}" && -n "${XDG_RUNTIME_DIR:-}" ]]; then
+      local socket="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+      BASE_ARGS+=(
+        -e WAYLAND_DISPLAY
+        -e XDG_RUNTIME_DIR
+        -v "$socket:$socket"
+      )
+      [[ -e /dev/dri ]] && BASE_ARGS+=(--device /dev/dri)
+    elif [[ -n "${DISPLAY:-}" ]]; then
+      # X11 fallback, only when there is no Wayland session.
+      BASE_ARGS+=(
+        -e DISPLAY
+        -v /tmp/.X11-unix:/tmp/.X11-unix
+      )
+    fi
+  fi
+
+  local dev
+  for dev in ${devices[@]+"${devices[@]}"}; do
+    if [[ ! -e "$dev" ]]; then
+      echo "xila-dev: device does not exist: $dev" >&2
+      exit 1
+    fi
+    BASE_ARGS+=(--device "$dev")
+  done
+}
+
+# Shell-quote a command as a single copy-pasteable line.
+print_command() {
+  local out="" arg
+  for arg in "$@"; do
+    out+="$(printf '%q' "$arg") "
+  done
+  printf '%s\n' "${out% }"
+}
+
+# Run a fully-resolved command, honouring --verbose and --print.
+invoke() {
+  if [[ "$verbose" == "1" ]]; then
+    print_command "$@" >&2
+  fi
+  if [[ "$print_only" == "1" ]]; then
+    print_command "$@"
+    return 0
+  fi
+  exec "$@"
+}
+
+# --- Commands ---------------------------------------------------------------
+
+case "$subcommand" in
+  build)
+    invoke "$engine" build --tag "$image" --file "$ENV_ROOT/Dockerfile" "$ENV_ROOT"
+    ;;
+  pull)
+    invoke "$engine" pull "$image"
+    ;;
+  run | shell | check | doctor)
+    [[ "$print_only" == "1" ]] || make_state_dirs
+    base_args
+    case "$subcommand" in
+      run)
+        invoke "$engine" "${BASE_ARGS[@]}" "$image" "$@"
+        ;;
+      shell)
+        invoke "$engine" "${BASE_ARGS[@]}" "$image" bash -l
+        ;;
+      check)
+        invoke "$engine" "${BASE_ARGS[@]}" "$image" cargo make check
+        ;;
+      doctor)
+        {
+          echo "engine:    $engine"
+          echo "image:     $image"
+          echo "ENV_ROOT:  $ENV_ROOT"
+          echo "WORKSPACE: $WORKSPACE"
+          echo "state:     $STATE"
+          echo "mounts:"
+          printf '  %s\n' \
+            "$WORKSPACE:/workspace" \
+            "$STATE/cargo:/workspace/.dev-environment/cargo" \
+            "$STATE/target:/workspace/.dev-environment/target" \
+            "$STATE/npm-cache:/workspace/.dev-environment/npm-cache" \
+            "$STATE/trunk-cache:/workspace/.dev-environment/trunk-cache" \
+            "$STATE/home:/workspace/.dev-environment/home"
+          echo "env:"
+          printf '  %s\n' \
+            "HOME=/workspace/.dev-environment/home" \
+            "CARGO_HOME=/workspace/.dev-environment/cargo" \
+            "RUSTUP_HOME=/usr/local/rustup" \
+            "CARGO_TARGET_DIR=/workspace/.dev-environment/target" \
+            "npm_config_cache=/workspace/.dev-environment/npm-cache" \
+            "TRUNK_CACHE=/workspace/.dev-environment/trunk-cache" \
+            "RUSTUP_TOOLCHAIN=$XILA_RUST_TOOLCHAIN"
+        } >&2
+        invoke "${engine}" "${BASE_ARGS[@]}" "$image" \
+          bash -lc 'rustc --version; cargo --version; node --version; cargo make --version'
+        ;;
+    esac
+    ;;
+esac
