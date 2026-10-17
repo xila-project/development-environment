@@ -21,7 +21,29 @@ RUN apt-get update \
     && grep -v '^#' /tmp/packages.txt | xargs apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Pinned Rust toolchains, Node.js and Cargo tools. install-tools.sh reads the
+# 2. LLVM/Clang. Ubuntu noble ships LLVM 18, but Xila's native and WASM builds
+#    use the LLVM 21.1.8 that Devbox resolved from its nixpkgs pin, so install
+#    that exact line from apt.llvm.org. The version is hardcoded here (Docker
+#    cannot read the manifest at ENV time) and guarded by the sanity check
+#    below; the apt suite is named by the major version (llvm-toolchain-noble-21).
+#    The build relies on bare `clang`/`clang++` (see Core's .cargo/config.toml),
+#    so create those symlinks explicitly instead of leaning on the versioned apt
+#    binaries or noble's own `clang` package.
+ENV LLVM_VERSION=21.1.8
+RUN LLVM_MAJOR="${LLVM_VERSION%%.*}" \
+    && curl --proto '=https' --tlsv1.2 -fsSL \
+         https://apt.llvm.org/llvm-snapshot.gpg.key \
+         -o /usr/share/keyrings/llvm.asc \
+    && echo "deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/noble/ llvm-toolchain-noble-${LLVM_MAJOR} main" \
+         > /etc/apt/sources.list.d/llvm.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+         "clang-${LLVM_MAJOR}" "libclang-${LLVM_MAJOR}-dev" \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sfn "/usr/lib/llvm-${LLVM_MAJOR}/bin/clang" /usr/bin/clang \
+    && ln -sfn "/usr/lib/llvm-${LLVM_MAJOR}/bin/clang++" /usr/bin/clang++
+
+# 3. Pinned Rust toolchains, Node.js and Cargo tools. install-tools.sh reads the
 #    pins from the manifest and performs its own permission fixes and smoke
 #    checks; it never runs apt.
 COPY install-tools.sh /tmp/install-tools.sh
@@ -29,15 +51,15 @@ COPY toolchains.env /tmp/toolchains.env
 RUN chmod +x /tmp/install-tools.sh \
     && /tmp/install-tools.sh /tmp/toolchains.env
 
-# 3. Runtime contract consumed by scripts/xila-dev and project CI. The XILA_*
-#    pins, RUSTUP_TOOLCHAIN and LIBCLANG_PATH mirror toolchains.env and the base
-#    image's clang (ubuntu:24.04 ships LLVM 18). Docker cannot read the manifest
-#    here, so they are hardcoded and guarded by the sanity check below;
+# 4. Runtime contract consumed by scripts/xila-dev and project CI. The XILA_*
+#    pins, RUSTUP_TOOLCHAIN and LIBCLANG_PATH mirror toolchains.env and the
+#    LLVM/Clang pinned from apt.llvm.org in step 2. Docker cannot read the
+#    manifest here, so they are hardcoded and guarded by the sanity check below;
 #    XILA_NIGHTLY_TOOLCHAIN must be exported so callers (including the image
 #    smoke tests) can run `rustup +"$XILA_NIGHTLY_TOOLCHAIN" ...`.
 ENV CC=clang \
     CXX=clang++ \
-    LIBCLANG_PATH=/usr/lib/llvm-18/lib \
+    LIBCLANG_PATH=/usr/lib/llvm-21/lib \
     CC_wasm32_unknown_unknown=clang \
     CXX_wasm32_unknown_unknown=clang++ \
     CC_wasm32_wasip1=clang \
@@ -49,26 +71,32 @@ ENV CC=clang \
     RUSTUP_TOOLCHAIN=1.99.0 \
     PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# 4. Build-time sanity check: the pinned tools, both pinned toolchains, the
-#    pinned cargo-binstall and libclang must be usable.
-#    The XILA_*/RUSTUP_TOOLCHAIN ENV above are hardcoded because Docker cannot
-#    read toolchains.env at ENV time, so guard them against drift: save the ENV
-#    values, source the still-present manifest, and fail (naming the key) if they
-#    disagree. RUSTUP_AUTO_INSTALL=0 keeps the `cargo +toolchain` checks honest —
-#    a missing toolchain fails loudly instead of being downloaded. A
-#    multi-argument `command -v` reports success even when a name is missing, so
-#    assert each tool individually as well.
+# 5. Build-time sanity check: the pinned tools, both pinned toolchains, the
+#    pinned cargo-binstall, the pinned clang and libclang must be usable.
+#    The XILA_*/RUSTUP_TOOLCHAIN/LLVM_VERSION ENV above are hardcoded because
+#    Docker cannot read toolchains.env at ENV time, so guard them against drift:
+#    save the ENV values, source the still-present manifest (which overwrites
+#    LLVM_VERSION), and fail (naming the key) if they disagree.
+#    RUSTUP_AUTO_INSTALL=0 keeps the `cargo +toolchain` checks honest — a missing
+#    toolchain fails loudly instead of being downloaded. A multi-argument
+#    `command -v` reports success even when a name is missing, so assert each
+#    tool individually as well.
 RUN test -e "$LIBCLANG_PATH/libclang.so" \
+    && env_llvm_version="$LLVM_VERSION" \
     && env_rust_toolchain="$XILA_RUST_TOOLCHAIN" \
     && env_nightly_toolchain="$XILA_NIGHTLY_TOOLCHAIN" \
     && env_rustup_toolchain="$RUSTUP_TOOLCHAIN" \
     && source /tmp/toolchains.env \
+    && { [[ "$env_llvm_version" == "$LLVM_VERSION" ]] \
+         || { echo "error: Dockerfile ENV LLVM_VERSION='$env_llvm_version' drifted from toolchains.env LLVM_VERSION='$LLVM_VERSION'" >&2; exit 1; }; } \
     && { [[ "$env_rust_toolchain" == "$XILA_RUST_TOOLCHAIN" ]] \
          || { echo "error: Dockerfile ENV XILA_RUST_TOOLCHAIN='$env_rust_toolchain' drifted from toolchains.env XILA_RUST_TOOLCHAIN='$XILA_RUST_TOOLCHAIN'" >&2; exit 1; }; } \
     && { [[ "$env_nightly_toolchain" == "$XILA_NIGHTLY_TOOLCHAIN" ]] \
          || { echo "error: Dockerfile ENV XILA_NIGHTLY_TOOLCHAIN='$env_nightly_toolchain' drifted from toolchains.env XILA_NIGHTLY_TOOLCHAIN='$XILA_NIGHTLY_TOOLCHAIN'" >&2; exit 1; }; } \
     && { [[ "$env_rustup_toolchain" == "$XILA_RUST_TOOLCHAIN" ]] \
          || { echo "error: Dockerfile ENV RUSTUP_TOOLCHAIN='$env_rustup_toolchain' must mirror toolchains.env XILA_RUST_TOOLCHAIN='$XILA_RUST_TOOLCHAIN'" >&2; exit 1; }; } \
+    && { clang --version | grep -Fq "clang version $LLVM_VERSION" \
+         || { echo "error: installed clang does not match pinned LLVM_VERSION='$LLVM_VERSION'" >&2; clang --version >&2; exit 1; }; } \
     && command -v bash clang cargo rustup node npm trunk taplo sccache cargo-make \
     && for tool in bash clang cargo rustup node npm trunk taplo sccache cargo-make; do \
          command -v "$tool" >/dev/null || { echo "error: sanity check failed: missing $tool" >&2; exit 1; }; \
@@ -80,11 +108,11 @@ RUN test -e "$LIBCLANG_PATH/libclang.so" \
     && RUSTUP_AUTO_INSTALL=0 cargo "+$XILA_RUST_TOOLCHAIN" --version \
     && RUSTUP_AUTO_INSTALL=0 cargo "+$XILA_NIGHTLY_TOOLCHAIN" --version
 
-# 5. OCI metadata.
+# 6. OCI metadata.
 LABEL org.opencontainers.image.source="https://github.com/Xila-Project/development-environment" \
       org.opencontainers.image.title="xila-core-dev" \
       org.opencontainers.image.description="Canonical Xila development environment"
 
-# 6. Defaults for interactive use.
+# 7. Defaults for interactive use.
 WORKDIR /workspace
 CMD ["/bin/bash"]
