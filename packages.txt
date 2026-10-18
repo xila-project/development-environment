@@ -9,6 +9,7 @@ libwayland-dev
 libxkbcommon-dev
 libsdl2-dev
 libgl-dev
+libasound2-dev
 libssl-dev
 zlib1g-dev
 # Downloads, VCS, certificates
