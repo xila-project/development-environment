@@ -81,7 +81,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/xila-project/core-dev
+          images: ghcr.io/xila-project/development-environment
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -151,7 +151,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/xila-project/core-dev
+          images: ghcr.io/xila-project/development-environment
           tags: |
             type=ref,event=branch
             type=sha,format=short
@@ -168,6 +168,6 @@ jobs:
             name="${tag##*:}"
             docker buildx imagetools create \
               --tag "$tag" \
-              "ghcr.io/xila-project/core-dev:${name}-amd64" \
-              "ghcr.io/xila-project/core-dev:${name}-arm64"
+              "ghcr.io/xila-project/development-environment:${name}-amd64" \
+              "ghcr.io/xila-project/development-environment:${name}-arm64"
           done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")

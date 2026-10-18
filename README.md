@@ -63,17 +63,17 @@ the build when those hardcoded `ENV` values drift from the manifest.
 Build locally from this repository's root — the repository is the build context:
 
 ```bash
-docker build --tag xila-core-dev:local .
+docker build --tag development-environment:local .
 ```
 
 Pulling is for the published image:
 
 ```bash
-docker pull ghcr.io/xila-project/core-dev:main
+docker pull ghcr.io/xila-project/development-environment:main
 ```
 
 Publishing is automated by `.github/workflows/publish-image.yml`, which pushes to
-`ghcr.io/xila-project/core-dev` on every push to `main` and on `v*` tags. Those
+`ghcr.io/xila-project/development-environment` on every push to `main` and on `v*` tags. Those
 builds are tagged `main`, `latest`, `sha-<short>`, and — for a semver tag
 `vX.Y.Z` — `X.Y.Z` and `X.Y`. Pull requests build the image without publishing
 it. Images are published for `linux/amd64` and `linux/arm64`. The Dockerfile
@@ -83,7 +83,7 @@ native runner, smoke-tests both architectures on pull requests, and combines
 the published images under the regular tags. BuildKit caches are kept separate
 per architecture.
 
-The first push creates the GHCR package `ghcr.io/xila-project/core-dev`, whose
+The first push creates the GHCR package `ghcr.io/xila-project/development-environment`, whose
 visibility defaults to **private**; anonymous `docker pull` returns a 403 until a
 maintainer sets the package to public once in the organization's package
 settings. The image carries the `org.opencontainers.image.source` label (set in
@@ -120,7 +120,7 @@ Subcommands:
 
 | Command | Purpose |
 | --- | --- |
-| `build` | Build the configured image tag (`$XILA_DEV_IMAGE`, default `ghcr.io/xila-project/core-dev:main`) from this repository's `Dockerfile`. |
+| `build` | Build the configured image tag (`$XILA_DEV_IMAGE`, default `ghcr.io/xila-project/development-environment:main`) from this repository's `Dockerfile`. |
 | `pull` | Pull the configured image. |
 | `shell` | Interactive login shell inside the container, in the workspace. |
 | `run <cmd...>` | Run a command in the container. |
@@ -148,8 +148,8 @@ cd /path/to/Xila/Core
 /path/to/development-environment/scripts/xila-dev check     # cargo make check
 ```
 
-The default image is `ghcr.io/xila-project/core-dev:main`; set
-`XILA_DEV_IMAGE=xila-core-dev:local` to use a locally built one.
+The default image is `ghcr.io/xila-project/development-environment:main`; set
+`XILA_DEV_IMAGE=development-environment:local` to use a locally built one.
 
 ## Caches
 

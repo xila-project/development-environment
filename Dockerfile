@@ -3,7 +3,7 @@
 # Build it from this repository's root, which is the build context, so that the
 # COPY sources below are repository-relative:
 #
-#     docker build --tag xila-core-dev:local .
+#     docker build --tag development-environment:local .
 #
 # Layer order keeps rebuilds cheap: system packages (`packages.txt`, rarely
 # changing) are installed before the pinned toolchains (`toolchains.env`, bumped
@@ -139,7 +139,7 @@ RUN set -e; \
 
 # 6. OCI metadata.
 LABEL org.opencontainers.image.source="https://github.com/Xila-Project/development-environment" \
-      org.opencontainers.image.title="xila-core-dev" \
+      org.opencontainers.image.title="development-environment" \
       org.opencontainers.image.description="Canonical Xila development environment"
 
 # 7. Defaults for interactive use.

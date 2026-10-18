@@ -27,7 +27,7 @@ source "$ENV_ROOT/toolchains.env"
 # Fail fast on a malformed manifest instead of emitting `-e RUSTUP_TOOLCHAIN=`.
 : "${XILA_RUST_TOOLCHAIN:?toolchains.env must define a non-empty XILA_RUST_TOOLCHAIN}"
 
-default_image="ghcr.io/xila-project/core-dev:main"
+default_image="ghcr.io/xila-project/development-environment:main"
 
 usage() {
   cat <<'EOF'

@@ -68,7 +68,7 @@ assert_contains "$out" "-v $tmp:/workspace"
 assert_contains "$out" "-w /workspace"
 assert_contains "$out" "CARGO_HOME=/workspace/.dev-environment/cargo"
 assert_contains "$out" "CARGO_TARGET_DIR=/workspace/.dev-environment/target"
-assert_contains "$out" "ghcr.io/xila-project/core-dev:main"
+assert_contains "$out" "ghcr.io/xila-project/development-environment:main"
 assert_contains "$out" "echo hi"
 
 # 2. Image override via the environment.
@@ -166,10 +166,14 @@ fi
 dockerfile="$REPO_ROOT/Dockerfile"
 workflow="$REPO_ROOT/.github/workflows/publish-image.yml"
 assert_contains "$(<"$dockerfile")" "FROM debian:trixie"
+assert_contains "$(<"$dockerfile")" "docker build --tag development-environment:local ."
+assert_contains "$(<"$dockerfile")" 'org.opencontainers.image.title="development-environment"'
 assert_not_contains "$(<"$dockerfile")" "install-tools.sh"
 assert_contains "$(<"$dockerfile")" "arm64) node_arch=arm64"
 assert_contains "$(<"$workflow")" "platform: linux/amd64"
 assert_contains "$(<"$workflow")" "platform: linux/arm64"
+assert_contains "$(<"$workflow")" "images: ghcr.io/xila-project/development-environment"
+assert_not_contains "$(<"$workflow")" "ghcr.io/xila-project/core-dev"
 assert_not_contains "$(<"$workflow")" "docker/setup-qemu-action@v3"
 assert_contains "$(<"$workflow")" 'runs-on: ${{ matrix.runner }}'
 assert_contains "$(<"$workflow")" "ubuntu-24.04-arm"
