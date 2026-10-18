@@ -173,6 +173,8 @@ assert_contains "$(<"$dockerfile")" 'org.opencontainers.image.title="development
 assert_contains "$(<"$dockerfile")" "RUSTC_WRAPPER=sccache"
 assert_contains "$(<"$dockerfile")" "CMAKE_C_COMPILER_LAUNCHER=sccache"
 assert_contains "$(<"$dockerfile")" "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
+assert_contains "$(<"$dockerfile")" 'taplo-linux-${taplo_arch}.gz'
+assert_not_contains "$(<"$dockerfile")" '"taplo-cli@${TAPLO_VERSION}"'
 assert_not_contains "$(<"$dockerfile")" "install-tools.sh"
 assert_contains "$(<"$dockerfile")" "arm64) node_arch=arm64"
 assert_contains "$(<"$workflow")" "platform: linux/amd64"

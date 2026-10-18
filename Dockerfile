@@ -61,9 +61,12 @@ RUN source /tmp/toolchains.env \
     && curl -fsSL "https://raw.githubusercontent.com/cargo-bins/cargo-binstall/v${CARGO_BINSTALL_VERSION}/install-from-binstall-release.sh" -o /tmp/binstall.sh \
     && BINSTALL_VERSION="$CARGO_BINSTALL_VERSION" bash /tmp/binstall.sh \
     && rm /tmp/binstall.sh \
+    && case "$(dpkg --print-architecture)" in amd64) taplo_arch=x86_64 ;; arm64) taplo_arch=aarch64 ;; *) echo "unsupported architecture" >&2; exit 1 ;; esac \
+    && curl -fsSL "https://github.com/tamasfe/taplo/releases/download/${TAPLO_VERSION}/taplo-linux-${taplo_arch}.gz" \
+         | gzip -d - | install -m 755 /dev/stdin /usr/local/bin/taplo \
     && cargo binstall --no-confirm --no-symlinks \
          "cargo-make@${CARGO_MAKE_VERSION}" "trunk@${TRUNK_VERSION}" \
-         "taplo-cli@${TAPLO_VERSION}" "cargo-llvm-cov@${CARGO_LLVM_COV_VERSION}" \
+         "cargo-llvm-cov@${CARGO_LLVM_COV_VERSION}" \
          "sccache@${SCCACHE_VERSION}" \
     && case "$(dpkg --print-architecture)" in amd64) node_arch=x64 ;; arm64) node_arch=arm64 ;; *) echo "unsupported architecture" >&2; exit 1 ;; esac \
     && node_dist_url="https://nodejs.org/dist/v${NODE_VERSION}" \
@@ -134,6 +137,7 @@ RUN set -e; \
     for tool in bash clang cargo rustup node npm trunk taplo sccache cargo-make; do \
       command -v "$tool" >/dev/null || { echo "error: sanity check failed: missing $tool" >&2; exit 1; }; \
     done; \
+    taplo --version | grep -Fq "taplo $TAPLO_VERSION" || { echo "error: taplo does not match pinned TAPLO_VERSION='$TAPLO_VERSION'" >&2; taplo --version >&2; exit 1; }; \
     cargo llvm-cov --version; \
     binstall_version="$(cargo binstall -V)"; \
     [[ "$binstall_version" == "$CARGO_BINSTALL_VERSION" || "$binstall_version" == "cargo-binstall $CARGO_BINSTALL_VERSION" ]] || { echo "error: cargo-binstall version '$binstall_version' does not match pinned '$CARGO_BINSTALL_VERSION'" >&2; exit 1; }; \
