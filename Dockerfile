@@ -134,7 +134,7 @@ RUN set -e; \
     assert_pin_matches "XILA_NIGHTLY_TOOLCHAIN" "$env_nightly_toolchain" "XILA_NIGHTLY_TOOLCHAIN" "$XILA_NIGHTLY_TOOLCHAIN"; \
     assert_pin_matches "RUSTUP_TOOLCHAIN" "$env_rustup_toolchain" "XILA_RUST_TOOLCHAIN" "$XILA_RUST_TOOLCHAIN"; \
     clang --version | grep -Fq "clang version $LLVM_VERSION" || { echo "error: installed clang does not match pinned LLVM_VERSION='$LLVM_VERSION'" >&2; clang --version >&2; exit 1; }; \
-    for tool in bash clang cargo rustup node npm trunk taplo sccache cargo-make; do \
+    for tool in bash clang cargo rustup node npm trunk taplo sccache cargo-make zstd; do \
       command -v "$tool" >/dev/null || { echo "error: sanity check failed: missing $tool" >&2; exit 1; }; \
     done; \
     taplo --version | grep -Fq "taplo $TAPLO_VERSION" || { echo "error: taplo does not match pinned TAPLO_VERSION='$TAPLO_VERSION'" >&2; taplo --version >&2; exit 1; }; \
