@@ -17,3 +17,5 @@ git
 curl
 ca-certificates
 xz-utils
+# GitHub Actions cache compression (avoids the slower gzip fallback)
+zstd
