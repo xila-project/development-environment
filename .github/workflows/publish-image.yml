@@ -127,6 +127,8 @@ jobs:
           docker run --rm "$image" taplo --version
           docker run --rm "$image" sccache --version
           docker run --rm "$image" zstd --version
+          docker run --rm "$image" gpg --version
+          docker run --rm "$image" gpg-agent --version
           docker run --rm "$image" cargo llvm-cov --version
           docker run --rm -e LLVM_VERSION="$LLVM_VERSION" "$image" bash -lc 'clang --version | grep -F "$LLVM_VERSION"'
           docker run --rm "$image" bash -lc 'test -e "$LIBCLANG_PATH/libclang.so"'

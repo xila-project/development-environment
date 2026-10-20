@@ -16,6 +16,9 @@ zlib1g-dev
 git
 curl
 ca-certificates
+# Codecov CLI signature verification (public-key import also needs the agent)
+gpg
+gpg-agent
 xz-utils
 # GitHub Actions cache compression (avoids the slower gzip fallback)
 zstd
